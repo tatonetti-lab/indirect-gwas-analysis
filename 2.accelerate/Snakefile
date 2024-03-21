@@ -1,0 +1,97 @@
+"""Show that Indirect GWAS can accelerate pan-biobank GWAS.
+
+Indirect GWAS accelerates pan-biobank GWAS using a low-dimensional 
+approximation of the phenotypes. Specifically, given N phenotypes, we compute
+the first K principal components of the phenotypes and use these as the latent
+phenotypes for GWAS. Once we have summary statistics for the latent phenotypes,
+we reconstruct the full-size GWAS summary statistics using Indirect GWAS. This
+relies on the fact that ordinary least squares regression has an exact solution.
+
+This analysis demonstrates the trade-off between faster computation speed and
+GWAS accuracy when using Indirect GWAS. More PCs means slower computation but
+more accurate GWAS, and vice versa.
+"""
+
+import numpy as np
+import pandas as pd
+import polars as pl
+import sklearn.decomposition
+
+
+rule all:
+  input:
+    "../data/pheno/pheno_jan2024.tsv",
+    "../data/pheno/covar.tsv",
+    "data/pheno/binary_pheno.tsv",
+    "data/pheno/pca.tsv",
+    expand("data/coef/pca_{frac}.tsv", frac=[0.1, 0.25, 0.5, 0.75, 0.9, 1.0]),
+
+
+rule filter_binary_pheno:
+  input:
+    "../data/pheno/pheno_jan2024.tsv",
+  output:
+    "data/pheno/binary_pheno.tsv",
+  run:
+    (
+        pl.scan_csv(input[0], separator="\t")
+        .select(pl.col("#FID").alias("FID"), "IID", pl.col("^b_.*$"))
+        .sink_csv(output[0], separator="\t")
+    )
+
+
+rule pca:
+  input:
+    "data/pheno/binary_pheno.tsv",
+  output:
+    "data/pheno/pca.tsv",
+  benchmark: "benchmarks/pca.txt",
+  run:
+    pheno_df = pl.read_csv(input[0], separator="\t")
+
+    X = pheno_df.drop(["FID", "IID"])
+    feature_names = X.columns
+    X = X.to_numpy().astype(np.float32)
+
+    pca = sklearn.decomposition.PCA()
+    pca.fit(X)
+    X_pca = pca.transform(X)
+
+    pca_names = [f"PC{i}" for i in range(1, X.shape[1] + 1)]
+    X_pca_df = pl.concat([
+        pheno_df[["FID", "IID"]],
+        pl.DataFrame(X_pca, schema=pca_names)
+    ], how="horizontal")
+    X_pca_df.write_csv(output[0], separator="\t")
+
+
+rule compute_projection_coef:
+  input:
+    pheno = "data/pheno/binary_pheno.tsv",
+    pca = "data/pheno/pca.tsv",
+  output:
+    "data/coef/pca_{frac}.tsv",
+  threads: 16,
+  benchmark: "benchmarks/compute_coef_{frac}.txt",
+  run:
+    pheno_df = pl.read_csv(input.pheno, separator="\t")
+    pca_df = pl.read_csv(input.pca, separator="\t")
+
+    X = pca_df.drop(["FID", "IID"]).to_numpy()
+    Y = pheno_df.drop(["FID", "IID"]).to_numpy()
+
+    frac = float(wildcards.frac)
+    n = int(frac * X.shape[1])
+    X = X[:, :n]
+    pca_names = pca_df.columns[2:][:n]
+    pheno_names = pheno_df.columns[2:]
+
+    coef = np.linalg.lstsq(X, Y, rcond=None)[0]
+    coef_df = pd.DataFrame(coef, index=pca_names, columns=pheno_names)
+    (
+        coef_df
+        .reset_index()
+        .rename(columns={"index": "feature"})
+        .pipe(pl.DataFrame)
+        .write_csv(output[0], separator="\t")
+    )
