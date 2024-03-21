@@ -1,0 +1,156 @@
+"""Validate Indirect GWAS using real data.
+
+This analysis generates some arbitrary linear combinations of phenotypes and 
+confirms that Indirect GWAS produces the same results as corresponding direct
+methods. This comparison will be performed for univariate OLS, multivariate 
+OLS, SAIGE, Regenie, and Fast-GWA.
+"""
+
+import numpy as np
+import pandas as pd
+import polars as pl
+
+
+blood_biochem_fields = [
+    # https://biobank.ndph.ox.ac.uk/ukb/label.cgi?id=17518
+    "30620", "30600", "30610", "30630", "30640", "30650", "30710", "30680",
+    "30690", "30700", "30720", "30660", "30730", "30740", "30750", "30760",
+    "30770", "30780", "30790", "30800", "30810", "30820", "30830", "30850",
+    "30840", "30860", "30870", "30880", "30670", "30890"
+]
+blood_biochem_names = set(f"q_{f}_0" for f in blood_biochem_fields)
+
+# Exclude "#FID" and "IID"
+pheno_names = pl.read_csv("../data/pheno/pheno_jan2024.tsv", n_rows=0, separator="\t").columns[2:]
+features = sorted([n for n in pheno_names if n in blood_biochem_names])
+n_features = 10
+features = features[:n_features]
+
+n_projections = 10
+projection_names = [f"PROJ{i:03}" for i in range(1, n_projections + 1)]
+
+
+rule all:
+  input: 
+    "../data/pheno/pheno_jan2024.tsv",
+    "../data/pheno/covar.tsv",
+    multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    "data/pheno/feature_pheno.tsv",
+    "data/pheno/projection_coef.tsv",
+    "data/pheno/projected_pheno.tsv",
+    "data/pheno/gwas_pheno.tsv",
+    expand(
+      "data/direct/ols_univariate/plink.{name}.glm.linear.zst", 
+      name=projection_names
+    ),
+    expand(
+      "data/direct/ols_multivariate/plink.{name}.glm.linear.zst", 
+      name=projection_names
+    ),
+    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    expand(
+      "data/direct/regenie/direct_{name}.regenie.gz",
+      name=projection_names + features
+    ),
+
+
+rule make_feature_pheno:
+  input:
+    "../data/pheno/pheno_jan2024.tsv",
+  output:
+    "data/pheno/feature_pheno.tsv",
+  params:
+    features = ",".join(features)
+  run:
+    (
+        pl.scan_csv(input[0], separator="\t")
+        .select(pl.col("#FID").alias("FID"), "IID", pl.col(features).round(3))
+        .sink_csv(output[0], separator="\t")
+    )
+
+rule make_projected_pheno:
+  input:
+    "data/pheno/feature_pheno.tsv",
+  output:
+    coef = "data/pheno/projection_coef.tsv",
+    pheno = "data/pheno/projected_pheno.tsv",
+  run:
+    df = pd.read_csv(input[0], sep="\t", index_col=[0, 1])
+    np.random.seed(0)
+    coef = np.random.normal(size=(len(features), n_projections))
+    coef_df = pd.DataFrame(
+        np.round(coef, decimals=3), 
+        index=features, 
+        columns=projection_names
+    )
+    coef_df.to_csv(output.coef, sep="\t")
+    (
+        (df @ coef_df)
+        .reset_index()
+        .pipe(pl.DataFrame)
+        .select("FID", "IID", pl.col(projection_names).round(3))
+        .write_csv(output.pheno, separator="\t")
+    )
+
+rule make_gwas_pheno:
+  input:
+    features = "data/pheno/feature_pheno.tsv",
+    projections = "data/pheno/projected_pheno.tsv",
+  output:
+    "data/pheno/gwas_pheno.tsv"
+  run:
+    (
+        pl.scan_csv(input.features, separator="\t")
+        .join(pl.scan_csv(input.projections, separator="\t"), on=["FID", "IID"])
+        .sink_csv(output[0], separator="\t")
+    )
+
+rule direct_univariate_gwas:
+  input:
+    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/gwas_pheno.tsv",
+  output:
+    expand(
+      "data/direct/ols_univariate/plink.{name}.glm.linear.zst", 
+      name=projection_names
+    ),
+  params:
+    geno_prefix = "../data/geno/hapmap3_variants",
+    output_prefix = "data/direct/ols_univariate/plink",
+  benchmark: "benchmarks/direct_univariate_gwas.txt"
+  threads: 35
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --pheno {input.pheno} \
+      --glm allow-no-covars zs \
+      --threads {threads} \
+      --out {params.output_prefix}
+    """
+
+rule direct_multivariate_gwas:
+  input:
+    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/gwas_pheno.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    expand(
+      "data/direct/ols_multivariate/plink.{name}.glm.linear.zst", 
+      name=projection_names
+    ),
+  params:
+    geno_prefix = "../data/geno/hapmap3_variants",
+    output_prefix = "data/direct/ols_multivariate/plink",
+  benchmark: "benchmarks/direct_multivariate_gwas.txt"
+  threads: 35
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --pheno {input.pheno} \
+      --covar {input.covar} \
+      --glm zs \
+      --threads {threads} \
+      --out {params.output_prefix}
+    """
