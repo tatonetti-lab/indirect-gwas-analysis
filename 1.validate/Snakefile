@@ -40,11 +40,11 @@ rule all:
     "data/pheno/projected_pheno.tsv",
     "data/pheno/gwas_pheno.tsv",
     expand(
-      "data/direct/ols_univariate/plink.{name}.glm.linear.zst", 
+      "data/direct/ols_univariate/plink.{name}.glm.linear.zst",
       name=projection_names
     ),
     expand(
-      "data/direct/ols_multivariate/plink.{name}.glm.linear.zst", 
+      "data/direct/ols_multivariate/plink.{name}.glm.linear.zst",
       name=projection_names
     ),
     multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
@@ -152,5 +152,84 @@ rule direct_multivariate_gwas:
       --covar {input.covar} \
       --glm zs \
       --threads {threads} \
+      --out {params.output_prefix}
+    """
+
+rule filter_genotypes_regenie:
+  input:
+    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+  output:
+    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+  params:
+    n_variants = 500_000,
+    input_prefix = "../data/geno/hapmap3_variants",
+    output_prefix = "data/geno/geno_500k"
+  shell:
+    """
+    plink2 \
+      --pfile {params.input_prefix} \
+      --thin-count {params.n_variants} \
+      --make-pgen \
+      --out {params.output_prefix}
+    """
+
+rule direct_regenie_step1:
+  input:
+    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/gwas_pheno.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    expand(
+      "data/direct/regenie/direct_{i}.loco.gz",
+      i=range(1, n_projections + n_features + 1)
+    ),
+    "data/direct/regenie/direct_pred.list",
+  params:
+    geno_prefix = "data/geno/geno_500k",
+    output_prefix = "data/direct/regenie/direct",
+  benchmark: "benchmarks/direct_regenie_step1.txt"
+  threads: 35
+  shell:
+    """
+    regenie \
+      --step 1 \
+      --pgen {params.geno_prefix} \
+      --phenoFile {input.pheno} \
+      --covarFile {input.covar} \
+      --bsize 1000 \
+      --lowmem \
+      --gz \
+      --threads {threads} \
+      --out {params.output_prefix}
+    """
+
+rule direct_regenie_step2:
+  input:
+    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/gwas_pheno.tsv",
+    covar = "../data/pheno/covar.tsv",
+    pred = "data/direct/regenie/direct_pred.list",
+  output:
+    expand(
+      "data/direct/regenie/direct_{name}.regenie.gz",
+      name=projection_names + features
+    ),
+  params:
+    geno_prefix = "../data/geno/hapmap3_variants",
+    output_prefix = "data/direct/regenie/direct",
+  benchmark: "benchmarks/direct_regenie_step2.txt"
+  threads: 35
+  shell:
+    """
+    regenie \
+      --step 2 \
+      --pgen {params.geno_prefix} \
+      --phenoFile {input.pheno} \
+      --covarFile {input.covar} \
+      --bsize 1000 \
+      --lowmem \
+      --gz \
+      --threads {threads} \
+      --pred {input.pred} \
       --out {params.output_prefix}
     """
