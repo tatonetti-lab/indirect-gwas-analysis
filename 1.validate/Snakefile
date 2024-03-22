@@ -34,7 +34,8 @@ rule all:
   input: 
     "../data/pheno/pheno_jan2024.tsv",
     "../data/pheno/covar.tsv",
-    multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    multiext("../data/geno/hapmap3_variants_white_british_100k", ".pgen", ".psam", ".pvar"),
+    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     "data/pheno/feature_pheno.tsv",
     "data/pheno/projection_coef.tsv",
     "data/pheno/projected_pheno.tsv",
@@ -47,7 +48,6 @@ rule all:
       "data/direct/ols_multivariate/plink.{name}.glm.linear.zst",
       name=projection_names
     ),
-    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     expand(
       "data/direct/regenie/direct_{name}.regenie.gz",
       name=projection_names + features
@@ -105,9 +105,27 @@ rule make_gwas_pheno:
         .sink_csv(output[0], separator="\t")
     )
 
+rule filter_genotypes:
+  input:
+    geno = multiext("../data/geno/hapmap3_variants_white_british_100k", ".pgen", ".psam", ".pvar"),
+  output:
+    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+  params:
+    n_variants = 500_000,
+    input_prefix = "../data/geno/hapmap3_variants_white_british_100k",
+    output_prefix = "data/geno/geno_500k"
+  shell:
+    """
+    plink2 \
+      --pfile {params.input_prefix} \
+      --thin-count {params.n_variants} \
+      --make-pgen \
+      --out {params.output_prefix}
+    """
+
 rule direct_univariate_gwas:
   input:
-    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
   output:
     expand(
@@ -115,7 +133,7 @@ rule direct_univariate_gwas:
       name=projection_names
     ),
   params:
-    geno_prefix = "../data/geno/hapmap3_variants",
+    geno_prefix = "data/geno/geno_500k",
     output_prefix = "data/direct/ols_univariate/plink",
   benchmark: "benchmarks/direct_univariate_gwas.txt"
   threads: 35
@@ -131,7 +149,7 @@ rule direct_univariate_gwas:
 
 rule direct_multivariate_gwas:
   input:
-    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
   output:
@@ -140,7 +158,7 @@ rule direct_multivariate_gwas:
       name=projection_names
     ),
   params:
-    geno_prefix = "../data/geno/hapmap3_variants",
+    geno_prefix = "data/geno/geno_500k",
     output_prefix = "data/direct/ols_multivariate/plink",
   benchmark: "benchmarks/direct_multivariate_gwas.txt"
   threads: 35
@@ -155,23 +173,6 @@ rule direct_multivariate_gwas:
       --out {params.output_prefix}
     """
 
-rule filter_genotypes_regenie:
-  input:
-    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
-  output:
-    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
-  params:
-    n_variants = 500_000,
-    input_prefix = "../data/geno/hapmap3_variants",
-    output_prefix = "data/geno/geno_500k"
-  shell:
-    """
-    plink2 \
-      --pfile {params.input_prefix} \
-      --thin-count {params.n_variants} \
-      --make-pgen \
-      --out {params.output_prefix}
-    """
 
 rule direct_regenie_step1:
   input:
@@ -205,7 +206,7 @@ rule direct_regenie_step1:
 
 rule direct_regenie_step2:
   input:
-    geno = multiext("../data/geno/hapmap3_variants", ".pgen", ".psam", ".pvar"),
+    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
     pred = "data/direct/regenie/direct_pred.list",
@@ -215,7 +216,7 @@ rule direct_regenie_step2:
       name=projection_names + features
     ),
   params:
-    geno_prefix = "../data/geno/hapmap3_variants",
+    geno_prefix = "data/geno/geno_500k",
     output_prefix = "data/direct/regenie/direct",
   benchmark: "benchmarks/direct_regenie_step2.txt"
   threads: 35
