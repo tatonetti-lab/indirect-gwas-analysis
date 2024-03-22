@@ -37,6 +37,7 @@ rule all:
     "../data/pheno/pheno_jan2024.tsv",
     "../data/pheno/covar.tsv",
     multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    "../data/grm/gcta.grm.sp",
     # Outputs
     "data/pheno/feature_pheno.tsv",
     "data/pheno/projection_coef.tsv",
@@ -54,6 +55,10 @@ rule all:
       "data/direct/regenie/direct_{name}.regenie.gz",
       name=projection_names + features
     ),
+    expand(
+      "data/direct/fastgwa/{name}.fastGWA",
+      name=projection_names + features
+    )
 
 
 rule make_feature_pheno:
@@ -214,5 +219,41 @@ rule direct_regenie_step2:
       --gz \
       --threads {threads} \
       --pred {input.pred} \
+      --out {params.output_prefix}
+    """
+
+def get_feature_names(file):
+    return pl.read_csv(file, n_rows=0, separator="\t").columns[2:]
+
+def get_feature_index(file, feature):
+    """Use an input function to ensure this is only run once the input file
+    is available"""
+    return get_feature_names(file).index(feature) + 1
+
+rule fastgwa:
+  input:
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    grm = "../data/grm/gcta.grm.sp",
+    pheno = "data/pheno/gwas_pheno.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    "data/direct/fastgwa/{phenotype}.fastGWA",
+  params:
+    geno_prefix = "../data/geno/geno_500k",
+    grm_prefix = "../data/grm/gcta",
+    output_prefix = lambda wc: f"data/direct/fastgwa/{wc.phenotype}",
+    mpheno = lambda wc, input: get_feature_index(input.pheno, wc.phenotype),
+  benchmark: "benchmarks/direct_fastgwa_{phenotype}.txt"
+  threads: 35
+  shell:
+    """
+    gcta \
+      --pfile {params.geno_prefix} \
+      --grm-sparse {params.grm_prefix} \
+      --fastGWA-mlm \
+      --pheno {input.pheno} \
+      --mpheno {params.mpheno} \
+      --qcovar {input.covar} \
+      --thread-num {threads} \
       --out {params.output_prefix}
     """
