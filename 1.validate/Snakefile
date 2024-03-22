@@ -3,7 +3,8 @@
 This analysis generates some arbitrary linear combinations of phenotypes and 
 confirms that Indirect GWAS produces the same results as corresponding direct
 methods. This comparison will be performed for univariate OLS, multivariate 
-OLS, SAIGE, Regenie, and Fast-GWA.
+OLS, SAIGE, Regenie, and Fast-GWA. This comparison only involves 10 features
+and 10 projections to keep the computational cost low.
 """
 
 import numpy as np
@@ -32,10 +33,11 @@ projection_names = [f"PROJ{i:03}" for i in range(1, n_projections + 1)]
 
 rule all:
   input: 
+    # Inputs
     "../data/pheno/pheno_jan2024.tsv",
     "../data/pheno/covar.tsv",
-    multiext("../data/geno/hapmap3_variants_white_british_100k", ".pgen", ".psam", ".pvar"),
-    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    # Outputs
     "data/pheno/feature_pheno.tsv",
     "data/pheno/projection_coef.tsv",
     "data/pheno/projected_pheno.tsv",
@@ -59,8 +61,6 @@ rule make_feature_pheno:
     "../data/pheno/pheno_jan2024.tsv",
   output:
     "data/pheno/feature_pheno.tsv",
-  params:
-    features = ",".join(features)
   run:
     (
         pl.scan_csv(input[0], separator="\t")
@@ -105,27 +105,9 @@ rule make_gwas_pheno:
         .sink_csv(output[0], separator="\t")
     )
 
-rule filter_genotypes:
-  input:
-    geno = multiext("../data/geno/hapmap3_variants_white_british_100k", ".pgen", ".psam", ".pvar"),
-  output:
-    multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
-  params:
-    n_variants = 500_000,
-    input_prefix = "../data/geno/hapmap3_variants_white_british_100k",
-    output_prefix = "data/geno/geno_500k"
-  shell:
-    """
-    plink2 \
-      --pfile {params.input_prefix} \
-      --thin-count {params.n_variants} \
-      --make-pgen \
-      --out {params.output_prefix}
-    """
-
 rule direct_univariate_gwas:
   input:
-    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
   output:
     expand(
@@ -133,7 +115,7 @@ rule direct_univariate_gwas:
       name=projection_names
     ),
   params:
-    geno_prefix = "data/geno/geno_500k",
+    geno_prefix = "../data/geno/geno_500k",
     output_prefix = "data/direct/ols_univariate/plink",
   benchmark: "benchmarks/direct_univariate_gwas.txt"
   threads: 35
@@ -149,7 +131,7 @@ rule direct_univariate_gwas:
 
 rule direct_multivariate_gwas:
   input:
-    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
   output:
@@ -158,7 +140,7 @@ rule direct_multivariate_gwas:
       name=projection_names
     ),
   params:
-    geno_prefix = "data/geno/geno_500k",
+    geno_prefix = "../data/geno/geno_500k",
     output_prefix = "data/direct/ols_multivariate/plink",
   benchmark: "benchmarks/direct_multivariate_gwas.txt"
   threads: 35
@@ -176,7 +158,7 @@ rule direct_multivariate_gwas:
 
 rule direct_regenie_step1:
   input:
-    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
   output:
@@ -186,7 +168,7 @@ rule direct_regenie_step1:
     ),
     "data/direct/regenie/direct_pred.list",
   params:
-    geno_prefix = "data/geno/geno_500k",
+    geno_prefix = "../data/geno/geno_500k",
     output_prefix = "data/direct/regenie/direct",
   benchmark: "benchmarks/direct_regenie_step1.txt"
   threads: 35
@@ -206,7 +188,7 @@ rule direct_regenie_step1:
 
 rule direct_regenie_step2:
   input:
-    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     pheno = "data/pheno/gwas_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
     pred = "data/direct/regenie/direct_pred.list",
@@ -216,7 +198,7 @@ rule direct_regenie_step2:
       name=projection_names + features
     ),
   params:
-    geno_prefix = "data/geno/geno_500k",
+    geno_prefix = "../data/geno/geno_500k",
     output_prefix = "data/direct/regenie/direct",
   benchmark: "benchmarks/direct_regenie_step2.txt"
   threads: 35
