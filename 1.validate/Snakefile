@@ -44,11 +44,11 @@ rule all:
     "data/pheno/gwas_pheno.tsv",
     expand(
       "data/direct/ols_univariate/plink.{name}.glm.linear.zst",
-      name=projection_names
+      name=projection_names + features
     ),
     expand(
       "data/direct/ols_multivariate/plink.{name}.glm.linear.zst",
-      name=projection_names
+      name=projection_names + features
     ),
     expand(
       "data/direct/regenie/direct_{name}.regenie.gz",
@@ -112,7 +112,7 @@ rule direct_univariate_gwas:
   output:
     expand(
       "data/direct/ols_univariate/plink.{name}.glm.linear.zst", 
-      name=projection_names
+      name=projection_names + features
     ),
   params:
     geno_prefix = "../data/geno/geno_500k",
@@ -137,7 +137,7 @@ rule direct_multivariate_gwas:
   output:
     expand(
       "data/direct/ols_multivariate/plink.{name}.glm.linear.zst", 
-      name=projection_names
+      name=projection_names + features
     ),
   params:
     geno_prefix = "../data/geno/geno_500k",
