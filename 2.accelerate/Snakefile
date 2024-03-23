@@ -156,3 +156,24 @@ rule gwas_direct:
       --threads {threads} \
       --out {params.output_prefix}
     """
+
+
+rule compute_covariance:
+  input:
+    pca = "data/pheno/pca.tsv",
+  output:
+    "data/pcov/pca.tsv",
+  threads: 35,
+  benchmark: "benchmarks/compute_cov.txt",
+  run:
+    pca_df = pl.read_csv(input.pca, separator="\t")
+    X = pca_df.drop(["FID", "IID"]).to_numpy()
+    cov = np.cov(X.T)
+    cov_df = pd.DataFrame(cov, index=pca_df.columns[2:], columns=pca_df.columns[2:])
+    (
+        cov_df
+        .reset_index()
+        .rename(columns={"index": "feature"})
+        .pipe(pl.DataFrame)
+        .write_csv(output[0], separator="\t")
+    )
