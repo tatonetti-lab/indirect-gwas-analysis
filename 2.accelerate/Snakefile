@@ -94,11 +94,13 @@ rule compute_projection_coef:
     frac = float(wildcards.frac)
     n = int(frac * X.shape[1])
     X = X[:, :n]
-    pca_names = pca_df.columns[2:][:n]
+    pca_names = pca_df.columns[2:]
     pheno_names = pheno_df.columns[2:]
 
     coef = np.linalg.lstsq(X, Y, rcond=None)[0]
-    coef_df = pd.DataFrame(coef, index=pca_names, columns=pheno_names)
+    full_coef = np.zeros((Y.shape[1], Y.shape[1]))
+    full_coef[:n] = coef
+    coef_df = pd.DataFrame(full_coef, index=pca_names, columns=pheno_names)
     (
         coef_df
         .reset_index()
