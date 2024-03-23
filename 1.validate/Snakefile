@@ -26,6 +26,7 @@ pheno_names = pl.read_csv("../data/pheno/pheno_jan2024.tsv", n_rows=0, separator
 features = sorted([n for n in pheno_names if n in blood_biochem_names])
 n_features = 10
 features = features[:n_features]
+feature_filenames = [f"plink.{name}.glm.linear.zst" for name in features]
 
 n_projections = 10
 projection_names = [f"PROJ{i:03}" for i in range(1, n_projections + 1)]
@@ -85,7 +86,7 @@ rule make_projected_pheno:
     coef = np.random.normal(size=(len(features), n_projections))
     coef_df = pd.DataFrame(
         np.round(coef, decimals=3), 
-        index=features, 
+        index=feature_filenames,
         columns=projection_names
     )
     coef_df.to_csv(output.coef, sep="\t")
@@ -256,4 +257,47 @@ rule fastgwa:
       --qcovar {input.covar} \
       --thread-num {threads} \
       --out {params.output_prefix}
+    """
+
+
+rule raw_covariance:
+  input:
+    "data/pheno/feature_pheno.tsv",
+  output:
+    "data/pcov/raw_covariance.tsv",
+  run:
+    cov_df = pd.read_csv(input[0], sep="\t", index_col=[0, 1]).cov()
+    names = cov_df.columns
+    new_names = [f"plink.{name}.glm.linear.zst" for name in names]
+    cov_df.columns = new_names
+    cov_df.index = new_names
+    cov_df.to_csv(output[0], sep="\t")
+
+
+rule indirect_univariate:
+  input:
+    proj_coef = "data/pheno/projection_coef.tsv",
+    pcov = "data/pcov/raw_covariance.tsv",
+    gwas = expand(
+      "data/direct/ols_univariate/plink.{name}.glm.linear.zst",
+      name=features
+    ),
+  output:
+    "data/igwas/univariate.tsv.zst",
+  threads: 35,
+  benchmark: "benchmarks/igwas_univariate.txt",
+  shell:
+    """
+    igwas \
+      --projection-matrix {input.proj_coef} \
+      --covariance-matrix {input.pcov} \
+      --gwas-results {input.gwas} \
+      --output-file {output} \
+      --num-threads {threads} \
+      --capacity {threads} \
+      --compress \
+      --num-covar 02 \
+      --beta BETA \
+      --std-error SE \
+      --sample-size OBS_CT
     """
