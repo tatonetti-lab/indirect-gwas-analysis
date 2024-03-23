@@ -4,8 +4,7 @@ rule all:
     multiext("data/geno/hapmap3_variants_white_british_100k", ".pgen", ".psam", ".pvar"),
     # Outputs
     multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
-    multiext("data/grm/gcta.grm", ".bin", ".id", ".N.bin"),
-    multiext("data/grm/gcta_sparse.grm", ".bin", ".id", ".N.bin"),
+    multiext("data/grm/gcta.grm", ".bin", ".id", ".N.bin", ".sp"),
 
 rule filter_genotypes:
   input:
@@ -71,18 +70,16 @@ rule gcta_sparsify_grm:
   input:
     multiext("data/grm/gcta.grm", ".bin", ".id", ".N.bin"),
   output:
-    multiext("data/grm/gcta_sparse.grm", ".bin", ".id", ".N.bin"),
+    "data/grm/gcta.grm.sp",
   params:
-    input_prefix = "data/grm/gcta",
-    output_prefix = "data/grm/gcta_sparse",
+    prefix = "data/grm/gcta",
   threads: 35
   benchmark: "benchmarks/gcta_sparsify_grm.txt"
   shell:
     """
     gcta \
-      --grm {params.input_prefix} \
-      --grm-cutoff 0.05 \
-      --make-grm \
+      --grm {params.prefix} \
+      --make-bK-sparse 0.05 \
       --thread-num {threads} \
-      --out {params.output_prefix}
+      --out {params.prefix}
     """
