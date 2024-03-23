@@ -94,7 +94,7 @@ rule compute_projection_coef:
     frac = float(wildcards.frac)
     n = int(frac * X.shape[1])
     X = X[:, :n]
-    pca_names = pca_df.columns[2:]
+    pca_names = [f"plink.{name}.glm.linear.zst" for name in pca_df.columns[2:]]
     pheno_names = pheno_df.columns[2:]
 
     coef = np.linalg.lstsq(X, Y, rcond=None)[0]
@@ -169,7 +169,8 @@ rule compute_covariance:
     pca_df = pl.read_csv(input.pca, separator="\t")
     X = pca_df.drop(["FID", "IID"]).to_numpy()
     cov = np.cov(X.T)
-    cov_df = pd.DataFrame(cov, index=pca_df.columns[2:], columns=pca_df.columns[2:])
+    pca_names = [f"plink.{name}.glm.linear.zst" for name in pca_df.columns[2:]]
+    cov_df = pd.DataFrame(cov, index=pca_names, columns=pca_names)
     (
         cov_df
         .reset_index()
