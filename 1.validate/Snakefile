@@ -307,25 +307,42 @@ rule regenie_adjusted_covariance:
   input:
     loco = expand("data/direct/regenie/direct_{i}.loco.gz", i=range(1, n_features + 1)),
     pheno = "data/pheno/gwas_pheno.tsv",
+    covar = "../data/pheno/covar.tsv",
   output:
     "data/pcov/regenie_adjusted_covariance_chr{idx}.tsv",
   run:
+    covar_df = pl.read_csv(input.covar, separator="\t").drop("FID")
     pheno_names = get_feature_names(input.pheno)
     inputs = [(f, int(f.split("_")[1].split(".")[0])) for f in input.loco]
     sorted_inputs = sorted(inputs, key=lambda x: x[1])
-    pheno_df = list()
+    full_pheno_df = list()
     for f, i in sorted_inputs:
         phenotype_name = pheno_names[i - 1]
         name = f"direct_{phenotype_name}.regenie.zst"
-        series = (
+        pheno_df = (
             pd.read_csv(f, sep="\s+", index_col=0)
-            .loc[int(wildcards.idx), :]
-            .rename(name)
+            .T
+            .reset_index()
+            .pipe(pl.DataFrame)
+            .with_columns(
+                pl.col("index")
+                .str.split_exact("_", 1)
+                .struct.rename_fields(["FID", "IID"])
+            )
+            .unnest("index")
+            .drop("FID")
+            .with_columns(pl.col("IID").cast(pl.Int64))
+            .join(covar_df, on=["IID"])
         )
-        pheno_df.append(series)
+        X = pheno_df.select(covar_df.drop(["IID"]).columns).to_numpy()
+        y = pheno_df.select(wildcards.idx).to_numpy().ravel()
+        beta = np.linalg.lstsq(X, y, rcond=None)[0]
+        residuals = y - X @ beta
+        series = pd.Series(residuals.ravel(), name=name)
+        full_pheno_df.append(series)
 
-    pheno_df = pd.concat(pheno_df, axis=1)
-    cov = pheno_df.cov()
+    full_pheno_df = pd.concat(full_pheno_df, axis=1)
+    cov = full_pheno_df.cov()
     cov.to_csv(output[0], sep="\t")
 
 
