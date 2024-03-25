@@ -1,2 +1,3 @@
 data
 .snakemake
+.ipynb_checkpoints
