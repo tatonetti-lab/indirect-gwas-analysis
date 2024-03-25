@@ -86,18 +86,19 @@ rule compute_projection_coef:
   threads: 35,
   benchmark: "benchmarks/compute_coef_{frac}.txt",
   run:
-    pheno_df = pl.read_csv(input.pheno, separator="\t")
-    pca_df = pl.read_csv(input.pca, separator="\t")
+    pheno_df = pl.read_csv(input.pheno, separator="\t").drop(["FID"])
+    pca_df = pl.read_csv(input.pca, separator="\t").drop(["FID"])
+    merged_df = pheno_df.join(pca_df, on=["IID"])
 
-    X = pca_df.drop(["FID", "IID"]).to_numpy()
-    Y = pheno_df.drop(["FID", "IID"]).to_numpy()
+    X = merged_df.select(pca_df.drop("IID").columns).to_numpy()
+    Y = merged_df.select(pheno_df.drop("IID").columns).to_numpy()
 
     frac = float(wildcards.frac)
     n = int(frac * X.shape[1])
     X = X[:, :n]
-    pca_names = [f"plink.{name}.glm.linear.zst" for name in pca_df.columns[2:]]
-    pheno_names = pheno_df.columns[2:]
-
+    pca_names = [f"plink.{name}.glm.linear.zst"
+                 for name in pca_df.drop("IID").columns]
+    pheno_names = pheno_df.drop("IID").columns
     coef = np.linalg.lstsq(X, Y, rcond=None)[0]
     full_coef = np.zeros((Y.shape[1], Y.shape[1]))
     full_coef[:n] = coef
@@ -159,25 +160,28 @@ rule gwas_direct:
     """
 
 
-rule compute_covariance:
+rule adjusted_covariance:
   input:
-    pca = "data/pheno/pca.tsv",
+    pheno = "data/pheno/pca.tsv",
+    covar = "../data/pheno/covar.tsv",
   output:
     "data/pcov/pca.tsv",
   threads: 35,
   benchmark: "benchmarks/compute_cov.txt",
   run:
-    pca_df = pl.read_csv(input.pca, separator="\t")
-    X = pca_df.drop(["FID", "IID"]).to_numpy()
-    cov = np.cov(X.T)
-    pca_names = [f"plink.{name}.glm.linear.zst" for name in pca_df.columns[2:]]
-    cov_df = pd.DataFrame(cov, index=pca_names, columns=pca_names)
+    pheno_df = pl.read_csv(input.pheno, separator="\t").drop("FID")
+    covar_df = pl.read_csv(input.covar, separator="\t").drop("FID")
+    merged_df = pheno_df.join(covar_df, on=["IID"])
+    Y = merged_df.select(pheno_df.drop("IID").columns).to_numpy()
+    X = merged_df.select(covar_df.drop("IID").columns).to_numpy()
+    beta = np.linalg.lstsq(X, Y, rcond=None)[0]
+    residuals = Y - X @ beta
+    cov = np.cov(residuals, rowvar=False)
+    pheno_names = pheno_df.drop("IID").columns
+    names = [f"plink.{name}.glm.linear.zst" for name in pheno_names]
     (
-        cov_df
-        .reset_index()
-        .rename(columns={"index": "feature"})
-        .pipe(pl.DataFrame)
-        .write_csv(output[0], separator="\t")
+        pd.DataFrame(cov, index=names, columns=names)
+        .to_csv(output[0], sep="\t")
     )
 
 
