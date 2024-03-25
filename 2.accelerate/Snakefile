@@ -87,7 +87,11 @@ rule compute_projection_coef:
   benchmark: "benchmarks/compute_coef_{frac}.txt",
   run:
     pheno_df = pl.read_csv(input.pheno, separator="\t").drop(["FID"])
-    pca_df = pl.read_csv(input.pca, separator="\t").drop(["FID"])
+    pca_df = (
+        pl.read_csv(input.pca, separator="\t")
+        .drop(["FID"])
+        .rename(lambda x: f"pheno.{x}" if x != "IID" else x)
+    )
     merged_df = pheno_df.join(pca_df, on=["IID"])
 
     X = merged_df.select(pca_df.drop("IID").columns).to_numpy()
@@ -96,7 +100,7 @@ rule compute_projection_coef:
     frac = float(wildcards.frac)
     n = int(frac * X.shape[1])
     X = X[:, :n]
-    pca_names = [f"plink.{name}.glm.linear.zst"
+    pca_names = [f"plink.{name.replace('pheno.', '')}.glm.linear.zst"
                  for name in pca_df.drop("IID").columns]
     pheno_names = pheno_df.drop("IID").columns
     coef = np.linalg.lstsq(X, Y, rcond=None)[0]
