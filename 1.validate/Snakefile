@@ -3,8 +3,8 @@
 This analysis generates some arbitrary linear combinations of phenotypes and 
 confirms that Indirect GWAS produces the same results as corresponding direct
 methods. This comparison will be performed for univariate OLS, multivariate 
-OLS, SAIGE, Regenie, and Fast-GWA. This comparison only involves 10 features
-and 10 projections to keep the computational cost low.
+OLS, Regenie, and Fast-GWA. This comparison only involves 10 features and 10 
+projections to keep the computational cost low.
 """
 
 import numpy as np
