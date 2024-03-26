@@ -20,8 +20,17 @@ import sklearn.decomposition
 n_phenotypes = 1238
 pca_names = [f"PC{i}" for i in range(1, n_phenotypes + 1)]
 
-def get_gwas_files(pheno_path):
-    colnames = pl.read_csv(pheno_path, separator="\t", n_rows=0).columns[2:]
+def get_gwas_files(pheno_path, prefix=None):
+    colnames = pl.read_csv(pheno_path, separator="\t", n_rows=0)
+    if "FID" in colnames.columns:
+        colnames = colnames.drop("FID")
+    if "IID" in colnames.columns:
+        colnames = colnames.drop("IID")
+
+    if prefix is not None:
+        colnames = colnames.select(f"^{prefix}.*$")
+
+    colnames = colnames.columns
     return [f"data/gwas/plink.{name}.glm.linear.zst" for name in colnames]
 
 
@@ -36,7 +45,7 @@ rule all:
     "data/pheno/pca.tsv",
     expand("data/coef/pca_{frac}.tsv", frac=[0.1, 0.25, 0.5, 0.75, 0.9, 1.0]),
     expand("data/gwas/plink.{name}.glm.linear.zst", name=pca_names),
-    get_gwas_files("data/pheno/binary_pheno.tsv"),
+    get_gwas_files("../data/pheno/pheno_jan2024.tsv", prefix="b_"),
     expand("data/igwas/pca_{frac}.tsv.zst", frac=[0.1, 0.25, 0.5, 0.75, 0.9, 1.0]),
 
 
@@ -153,7 +162,7 @@ rule gwas_direct:
     pheno = "data/pheno/binary_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
   output:
-    get_gwas_files("data/pheno/binary_pheno.tsv"),
+    get_gwas_files("../data/pheno/pheno_jan2024.tsv", prefix="b_"),
   params:
     geno_prefix = "../data/geno/geno_500k",
     output_prefix = "data/gwas/plink",
