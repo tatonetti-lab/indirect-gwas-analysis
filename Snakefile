@@ -1,10 +1,28 @@
+import polars as pl
+
+
+phenotype_names = (
+    pl.read_csv("data/pheno/pheno_jan2024.tsv", separator="\t", n_rows=0)
+    .drop(["#FID", "IID"])
+    .columns
+)
+
+
 rule all:
   input:
     # Inputs
     multiext("data/geno/hapmap3_variants_white_british_100k", ".pgen", ".psam", ".pvar"),
+    "data/pheno/pheno_jan2024.tsv",
+    "data/pheno/covar.tsv",
     # Outputs
     multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     multiext("data/grm/gcta.grm", ".bin", ".id", ".N.bin", ".sp"),
+    expand(
+        "data/gwas/plink.{phenotype}.glm.linear.zst",
+        phenotype=phenotype_names
+    ),
+
+
 
 rule filter_genotypes:
   input:
@@ -24,6 +42,7 @@ rule filter_genotypes:
       --out {params.output_prefix}
     """
 
+
 rule gcta_grm_part:
   input:
     geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
@@ -42,6 +61,7 @@ rule gcta_grm_part:
       --thread-num {threads} \
       --out {params.output_prefix}
     """
+
 
 rule gcta_collect_grm:
   input:
@@ -66,6 +86,7 @@ rule gcta_collect_grm:
     cat {params.N_files} > {output.N}
     """
 
+
 rule gcta_sparsify_grm:
   input:
     multiext("data/grm/gcta.grm", ".bin", ".id", ".N.bin"),
@@ -82,4 +103,31 @@ rule gcta_sparsify_grm:
       --make-bK-sparse 0.05 \
       --thread-num {threads} \
       --out {params.prefix}
+    """
+
+
+rule gwas:
+  input:
+    geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/pheno_jan2024.tsv",
+    covar = "data/pheno/covar.tsv",
+  output:
+    expand(
+        "data/gwas/plink.{phenotype}.glm.linear.zst",
+        phenotype=phenotype_names
+    ),
+  params:
+    geno_prefix = "data/geno/geno_500k",
+    output_prefix = "data/gwas/plink",
+  threads: 35
+  benchmark: "benchmarks/gwas.txt"
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --glm zs hide-covar \
+      --pheno {input.pheno} \
+      --covar {input.covar} \
+      --threads {threads} \
+      --out {params.output_prefix}
     """
