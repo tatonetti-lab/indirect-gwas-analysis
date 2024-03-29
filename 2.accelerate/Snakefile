@@ -47,6 +47,8 @@ rule all:
     expand("data/gwas/plink.{name}.glm.linear.zst", name=pca_names),
     get_gwas_files("../data/pheno/pheno_jan2024.tsv", prefix="b_"),
     expand("data/igwas/pca_{frac}.tsv.zst", frac=[0.1, 0.25, 0.5, 0.75, 0.9, 1.0]),
+    expand("data/gwas_timing/plink_uni_{n}.PC1.glm.linear", n=[2, 10, 50, 100]),
+    expand("data/gwas_timing/plink_multi_{n}.PC1.glm.linear", n=[2, 10, 50, 100]),
 
 
 rule filter_binary_pheno:
@@ -233,4 +235,57 @@ rule gwas_indirect:
       --beta BETA \
       --std-error SE \
       --sample-size OBS_CT
+    """
+
+
+###############################################################################
+
+
+rule time_gwas_univariate:
+  input:
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/pca.tsv",
+  output:
+    "data/gwas_timing/plink_uni_{n}.PC1.glm.linear",
+  params:
+    geno_prefix = "../data/geno/geno_500k",
+    output_prefix = "data/gwas_timing/plink_uni_{n}",
+  threads: 35,
+  benchmark: "benchmarks/gwas_pca_uni_{n}.txt",
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --pheno {input.pheno} \
+      --pheno-name PC1-PC{wildcards.n} \
+      --no-psam-pheno \
+      --glm allow-no-covars hide-covar \
+      --threads {threads} \
+      --out {params.output_prefix}
+    """
+
+
+rule time_gwas_multivariate:
+  input:
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/pca.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    "data/gwas_timing/plink_multi_{n}.PC1.glm.linear",
+  params:
+    geno_prefix = "../data/geno/geno_500k",
+    output_prefix = "data/gwas_timing/plink_multi_{n}",
+  threads: 35,
+  benchmark: "benchmarks/gwas_pca_multi_{n}.txt",
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --pheno {input.pheno} \
+      --pheno-name PC1-PC{wildcards.n} \
+      --no-psam-pheno \
+      --covar {input.covar} \
+      --glm hide-covar \
+      --threads {threads} \
+      --out {params.output_prefix}
     """
