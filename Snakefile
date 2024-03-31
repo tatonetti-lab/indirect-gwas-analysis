@@ -43,6 +43,22 @@ rule filter_genotypes:
     """
 
 
+rule filter_binary_pheno:
+  input:
+    raw_pheno = "data/pheno/pheno_jan2024.tsv",
+    psam = "data/geno/geno_500k.psam",
+  output:
+    "data/pheno/binary_pheno.tsv",
+  run:
+    psam_df = pl.scan_csv(input.psam, separator="\t").select("IID")
+    (
+        pl.scan_csv(input.raw_pheno, separator="\t")
+        .select(pl.col("#FID").alias("FID"), "IID", "^b_.*$")
+        .join(psam_df, on="IID")
+        .sink_csv(output[0], separator="\t")
+    )
+
+
 rule gcta_grm_part:
   input:
     geno = multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),

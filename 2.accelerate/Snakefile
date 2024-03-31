@@ -41,7 +41,7 @@ rule all:
     "../data/pheno/covar.tsv",
     multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
     # Outputs
-    "data/pheno/binary_pheno.tsv",
+    "../data/pheno/binary_pheno.tsv",
     "data/pheno/pca.tsv",
     expand("data/coef/pca_{frac}.tsv", frac=[0.1, 0.25, 0.5, 0.75, 0.9, 1.0]),
     expand("data/gwas/plink.{name}.glm.linear.zst", name=pca_names),
@@ -51,25 +51,10 @@ rule all:
     expand("data/gwas_timing/plink_multi_{n}.PC1.glm.linear", n=[2, 10, 50, 100]),
 
 
-rule filter_binary_pheno:
-  input:
-    raw_pheno = "../data/pheno/pheno_jan2024.tsv",
-    psam = "../data/geno/geno_500k.psam",
-  output:
-    "data/pheno/binary_pheno.tsv",
-  run:
-    psam_df = pl.scan_csv(input.psam, separator="\t").select("IID")
-    (
-        pl.scan_csv(input.raw_pheno, separator="\t")
-        .select(pl.col("#FID").alias("FID"), "IID", "^b_.*$")
-        .join(psam_df, on="IID")
-        .sink_csv(output[0], separator="\t")
-    )
-
 
 rule pca:
   input:
-    "data/pheno/binary_pheno.tsv",
+    "../data/pheno/binary_pheno.tsv",
   output:
     "data/pheno/pca.tsv",
   benchmark: "benchmarks/pca.txt",
@@ -97,7 +82,7 @@ rule pca:
 
 rule compute_projection_coef:
   input:
-    pheno = "data/pheno/binary_pheno.tsv",
+    pheno = "../data/pheno/binary_pheno.tsv",
     pca = "data/pheno/pca.tsv",
   output:
     "data/coef/pca_{frac}.tsv",
@@ -161,7 +146,7 @@ rule gwas_pcs:
 rule gwas_direct:
   input:
     geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
-    pheno = "data/pheno/binary_pheno.tsv",
+    pheno = "../data/pheno/binary_pheno.tsv",
     covar = "../data/pheno/covar.tsv",
   output:
     get_gwas_files("../data/pheno/pheno_jan2024.tsv", prefix="b_"),
