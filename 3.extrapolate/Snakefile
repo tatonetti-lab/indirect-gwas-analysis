@@ -24,6 +24,7 @@ rule all:
     # Outputs
     "data/phecode_map/phecode_definitions1.2.csv",
     "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
+    "data/pheno/phecodes.tsv",
 
 
 rule download_phecode_map:
@@ -38,3 +39,16 @@ rule download_phecode_map:
     wget -O {output.map_df}.zip https://phewascatalog.org/files/Phecode_map_v1_2_icd10_beta.csv.zip
     unzip {output.map_df}.zip -d data/phecode_map
     """
+
+
+rule assign_phecodes:
+  input:
+    def_df = "data/phecode_map/phecode_definitions1.2.csv",
+    map_df = "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
+    phenos = "../data/pheno/binary_pheno.tsv",
+  output:
+    "data/pheno/phecodes.tsv"
+  conda:
+    "phd"
+  notebook:
+    "1.assign_phecodes.py.ipynb"
