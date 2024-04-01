@@ -25,7 +25,8 @@ rule all:
     "data/phecode_map/phecode_definitions1.2.csv",
     "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
     "data/pheno/phecodes.tsv",
-    "data/coef/binary_to_phecode.tsv"
+    "data/coef/binary_to_phecode.tsv",
+    "data/pcov/adjusted_covariance.tsv",
 
 
 rule download_phecode_map:
@@ -89,3 +90,26 @@ rule gwas:
       --threads {threads} \
       --out {params.output_prefix}
     """
+
+
+rule adjusted_covariance:
+  input:
+    pheno = "../data/pheno/binary_pheno.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    "data/pcov/adjusted_covariance.tsv",
+  run:
+    pheno_df = pl.read_csv(input.pheno, separator="\t")
+    covar_df = pl.read_csv(input.covar, separator="\t")
+    merged_df = pheno_df.join(covar_df, on=["FID", "IID"])
+    Y = merged_df.select(pheno_df.drop(["FID", "IID"]).columns).to_numpy()
+    X = merged_df.select(covar_df.drop(["FID", "IID"]).columns).to_numpy()
+    beta = np.linalg.lstsq(X, Y, rcond=None)[0]
+    residuals = Y - X @ beta
+    cov = np.cov(residuals, rowvar=False)
+    pheno_names = pheno_df.drop(["FID", "IID"]).columns
+    names = [f"plink.{name}.glm.linear.zst" for name in pheno_names]
+    (
+        pd.DataFrame(cov, index=names, columns=names)
+        .to_csv(output[0], sep="\t")
+    )
