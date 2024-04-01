@@ -16,6 +16,7 @@ rule all:
     "data/pheno/covar.tsv",
     # Outputs
     multiext("data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    "data/pheno/binary_pheno.tsv",
     multiext("data/grm/gcta.grm", ".bin", ".id", ".N.bin", ".sp"),
     expand(
         "data/gwas/plink.{phenotype}.glm.linear.zst",
