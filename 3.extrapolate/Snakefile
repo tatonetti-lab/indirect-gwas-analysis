@@ -25,6 +25,7 @@ rule all:
     "data/phecode_map/phecode_definitions1.2.csv",
     "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
     "data/pheno/phecodes.tsv",
+    "data/coef/binary_to_phecode.tsv"
 
 
 rule download_phecode_map:
@@ -52,3 +53,15 @@ rule assign_phecodes:
     "phd"
   notebook:
     "1.assign_phecodes.py.ipynb"
+
+
+rule regress_phecodes:
+  input:
+    phecode = "data/pheno/phecodes.tsv",
+    binary = "../data/pheno/binary_pheno.tsv",
+  output:
+    "data/coef/binary_to_phecode.tsv"
+  conda:
+    "phd"
+  notebook:
+    "2.regress_phecodes.py.ipynb"
