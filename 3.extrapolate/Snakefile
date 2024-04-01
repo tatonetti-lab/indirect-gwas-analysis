@@ -1,0 +1,40 @@
+"""Show that Indirect GWAS can be used to extrapolate to new traits.
+
+Suppose we have a set of phenotypes (called feature traits) with existing GWAS
+summary statistics. If a new phenotype can be approximated as a linear
+combination of the feature traits, then we can approximate the GWAS for the new
+phenotype using Indirect GWAS. This analysis shows that real human phenotypes
+can be well-approximated using linear combinations, and that, accordingly,
+approximated GWAS (via Indirect GWAS) can be highly accurate.
+
+This functionality is useful for extrapolating GWAS to new phenotype
+definitions, beyond the phenotypes for which GWAS have been conducted.
+"""
+
+import numpy as np
+import pandas as pd
+import polars as pl
+
+
+rule all:
+  input:
+    # Inputs
+    "../data/pheno/binary_pheno.tsv",
+    "../data/pheno/covar.tsv",
+    # Outputs
+    "data/phecode_map/phecode_definitions1.2.csv",
+    "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
+
+
+rule download_phecode_map:
+  output:
+    def_df = "data/phecode_map/phecode_definitions1.2.csv",
+    map_df = "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
+  shell:
+    """
+    wget -O {output.def_df}.zip https://phewascatalog.org/files/phecode_definitions1.2.csv.zip
+    unzip {output.def_df}.zip -d data/phecode_map
+
+    wget -O {output.map_df}.zip https://phewascatalog.org/files/Phecode_map_v1_2_icd10_beta.csv.zip
+    unzip {output.map_df}.zip -d data/phecode_map
+    """
