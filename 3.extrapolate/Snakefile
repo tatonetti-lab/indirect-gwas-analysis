@@ -30,8 +30,14 @@ rule all:
     "data/phecode_map/phecode_definitions1.2.csv",
     "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
     "data/pheno/phecodes.tsv",
+    "data/pheno/phecodes_inclusion_only.tsv",
     "data/coef/binary_to_phecode.tsv",
+    "data/coef/binary_to_phecode_inclusion.tsv",
     "data/pcov/adjusted_covariance.tsv",
+    "data/igwas/phecodes.tsv.zst",
+    "data/igwas/phecodes_inclusion_only.tsv.zst",
+    "data/gwas/plink.log",
+    "data/gwas/inclusion.log",
 
 
 rule download_phecode_map:
@@ -54,7 +60,8 @@ rule assign_phecodes:
     map_df = "data/phecode_map/Phecode_map_v1_2_icd10_beta.csv",
     phenos = "../data/pheno/binary_pheno.tsv",
   output:
-    "data/pheno/phecodes.tsv"
+    "data/pheno/phecodes.tsv",
+    "data/pheno/phecodes_inclusion_only.tsv",
   conda:
     "phd"
   notebook:
@@ -64,9 +71,11 @@ rule assign_phecodes:
 rule regress_phecodes:
   input:
     phecode = "data/pheno/phecodes.tsv",
+    inclusion = "data/pheno/phecodes_inclusion_only.tsv",
     binary = "../data/pheno/binary_pheno.tsv",
   output:
-    "data/coef/binary_to_phecode.tsv"
+    "data/coef/binary_to_phecode.tsv",
+    "data/coef/binary_to_phecode_inclusion.tsv",
   conda:
     "phd"
   notebook:
@@ -97,6 +106,29 @@ rule gwas:
     """
 
 
+rule gwas_inclusion:
+  input:
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/phecodes_inclusion_only.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    "data/gwas/inclusion.log",
+  params:
+    geno_prefix = "../data/geno/geno_500k",
+    output_prefix = "data/gwas/inclusion",
+  threads: 35
+  benchmark: "benchmarks/gwas.txt"
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --glm zs hide-covar \
+      --pheno {input.pheno} \
+      --covar {input.covar} \
+      --threads {threads} \
+      --out {params.output_prefix}
+    """
+
 rule adjusted_covariance:
   input:
     pheno = "../data/pheno/binary_pheno.tsv",
@@ -120,7 +152,7 @@ rule adjusted_covariance:
     )
 
 
-rule indirect_multivariate:
+rule igwas:
   input:
     proj_coef = "data/coef/binary_to_phecode.tsv",
     pcov = "data/pcov/adjusted_covariance.tsv",
@@ -132,6 +164,36 @@ rule indirect_multivariate:
     "data/igwas/phecodes.tsv.zst",
   threads: 35,
   benchmark: "benchmarks/igwas.txt",
+  shell:
+    """
+    igwas \
+      --projection-matrix {input.proj_coef} \
+      --covariance-matrix {input.pcov} \
+      --gwas-results {input.gwas} \
+      --output-file {output} \
+      --num-threads {threads} \
+      --capacity 100 \
+      --compress \
+      --num-covar 12 \
+      --beta BETA \
+      --std-error SE \
+      --sample-size OBS_CT \
+      --chunksize 500000
+    """
+
+
+rule igwas_inclusion:
+  input:
+    proj_coef = "data/coef/binary_to_phecode_inclusion.tsv",
+    pcov = "data/pcov/adjusted_covariance.tsv",
+    gwas = expand(
+      "../data/gwas/plink.{name}.glm.linear.zst",
+      name=phenotype_names
+    ),
+  output:
+    "data/igwas/phecodes_inclusion_only.tsv.zst",
+  threads: 35,
+  benchmark: "benchmarks/igwas_inclusion.txt",
   shell:
     """
     igwas \
