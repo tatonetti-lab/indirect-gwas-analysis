@@ -3,7 +3,7 @@ import polars as pl
 
 phenotype_names = (
     pl.read_csv("data/pheno/pheno_jan2024.tsv", separator="\t", n_rows=0)
-    .drop(["#FID", "IID"])
+    .select("^b_.*$")
     .columns
 )
 
