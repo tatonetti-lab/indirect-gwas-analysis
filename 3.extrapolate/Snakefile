@@ -65,3 +65,27 @@ rule regress_phecodes:
     "phd"
   notebook:
     "2.regress_phecodes.py.ipynb"
+
+
+rule gwas:
+  input:
+    geno = multiext("../data/geno/geno_500k", ".pgen", ".psam", ".pvar"),
+    pheno = "data/pheno/phecodes.tsv",
+    covar = "../data/pheno/covar.tsv",
+  output:
+    "data/gwas/plink.log",
+  params:
+    geno_prefix = "../data/geno/geno_500k",
+    output_prefix = "data/gwas/plink",
+  threads: 35
+  benchmark: "benchmarks/gwas.txt"
+  shell:
+    """
+    plink2 \
+      --pfile {params.geno_prefix} \
+      --glm zs hide-covar \
+      --pheno {input.pheno} \
+      --covar {input.covar} \
+      --threads {threads} \
+      --out {params.output_prefix}
+    """
