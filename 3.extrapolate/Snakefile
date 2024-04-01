@@ -15,6 +15,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+phenotype_names = (
+    pl.read_csv("../data/pheno/binary_pheno.tsv", separator="\t", n_rows=0)
+    .select("^b_.*$")
+    .columns
+)
 
 rule all:
   input:
@@ -113,3 +118,33 @@ rule adjusted_covariance:
         pd.DataFrame(cov, index=names, columns=names)
         .to_csv(output[0], sep="\t")
     )
+
+
+rule indirect_multivariate:
+  input:
+    proj_coef = "data/coef/binary_to_phecode.tsv",
+    pcov = "data/pcov/adjusted_covariance.tsv",
+    gwas = expand(
+      "../data/gwas/plink.{name}.glm.linear.zst",
+      name=phenotype_names
+    ),
+  output:
+    "data/igwas/phecodes.tsv.zst",
+  threads: 35,
+  benchmark: "benchmarks/igwas.txt",
+  shell:
+    """
+    igwas \
+      --projection-matrix {input.proj_coef} \
+      --covariance-matrix {input.pcov} \
+      --gwas-results {input.gwas} \
+      --output-file {output} \
+      --num-threads {threads} \
+      --capacity 100 \
+      --compress \
+      --num-covar 12 \
+      --beta BETA \
+      --std-error SE \
+      --sample-size OBS_CT \
+      --chunksize 500000
+    """
