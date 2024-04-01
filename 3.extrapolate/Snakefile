@@ -136,19 +136,19 @@ rule adjusted_covariance:
   output:
     "data/pcov/adjusted_covariance.tsv",
   run:
-    pheno_df = pl.read_csv(input.pheno, separator="\t")
-    covar_df = pl.read_csv(input.covar, separator="\t")
-    merged_df = pheno_df.join(covar_df, on=["FID", "IID"])
-    Y = merged_df.select(pheno_df.drop(["FID", "IID"]).columns).to_numpy()
-    X = merged_df.select(covar_df.drop(["FID", "IID"]).columns).to_numpy()
+    pheno_df = pl.read_csv(input.pheno, separator="\t").drop("FID")
+    covar_df = pl.read_csv(input.covar, separator="\t").drop("FID")
+    merged_df = pheno_df.join(covar_df, on=["IID"])
+    Y = merged_df.select(pheno_df.drop(["IID"]).columns).to_numpy()
+    X = merged_df.select(covar_df.drop(["IID"]).columns, const=1).to_numpy()
     beta = np.linalg.lstsq(X, Y, rcond=None)[0]
     residuals = Y - X @ beta
     cov = np.cov(residuals, rowvar=False)
-    pheno_names = pheno_df.drop(["FID", "IID"]).columns
+    pheno_names = pheno_df.drop(["IID"]).columns
     names = [f"plink.{name}.glm.linear.zst" for name in pheno_names]
     (
         pd.DataFrame(cov, index=names, columns=names)
-        .to_csv(output[0], sep="\t")
+        .to_csv(output[0], sep="\t", float_format="%.6f")
     )
 
 
